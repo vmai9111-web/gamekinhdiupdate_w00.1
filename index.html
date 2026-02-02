@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DARKNESS: TACTICAL EDITION</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; touch-action: none; color: white; }
+        canvas { display: block; width: 100vw; height: 100vh; transition: transform 0.05s; }
+        #ui { position: absolute; bottom: 100px; left: 20px; z-index: 10; display:none; }
+        .bar-container { width: 180px; height: 10px; border: 1px solid #444; background: rgba(0,0,0,0.8); margin: 5px 0; }
+        #hp-bar { width: 100%; height: 100%; background: #b00; transition: width 0.2s; }
+        #bat-bar { width: 100%; height: 100%; background: #cc0; }
+        #minimap { position: absolute; top: 20px; left: 20px; width: 120px; height: 150px; border: 2px solid #f00; background: #000; z-index: 20; border-radius: 5px; overflow: hidden; }
+        #m-canvas { width: 100%; height: 100%; }
+        #quest-ui { position: absolute; top: 20px; right: 20px; color: #fff; background: rgba(0,0,0,0.6); padding: 8px 12px; border: 1px solid #500; z-index: 20; }
+        #msg-center { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: #0ff; font-size: 24px; font-weight: bold; text-shadow: 0 0 15px #0ff; display: none; z-index: 30; pointer-events: none; text-align: center; }
+        #menu, #device-menu, #overlay { position: absolute; top:0; left:0; width:100%; height:100%; background:#000; display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:100; text-align: center; }
+        h1 { color: #f00; letter-spacing: 5px; font-size: 40px; text-shadow: 0 0 10px #f00; margin: 10px; }
+        button { padding:15px 30px; border:1px solid #eee; background:none; color:#eee; cursor:pointer; font-size:16px; margin: 10px; transition: 0.3s; }
+        button:hover { background: #f00; color: #000; }
+        
+        /* Joystick & Controls */
+        #joystick-container { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; display: none; z-index: 50; border: 1px solid rgba(255,0,0,0.3); }
+        #joystick-knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: rgba(255,0,0,0.4); border-radius: 50%; }
+        
+        /* Gun UI */
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; pointer-events: none; z-index: 40; display: none; }
+        #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #0f0; }
+        #crosshair::before { top: 9px; left: 0; width: 20px; height: 2px; }
+        #crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
+        #ammo-ui { position: absolute; bottom: 120px; right: 20px; color: #0f0; font-size: 30px; font-weight: bold; display: none; z-index: 40; text-shadow: 0 0 5px #0f0; }
+        #action-btn { position: absolute; bottom: 60px; right: 40px; width: 80px; height: 80px; background: rgba(255, 0, 0, 0.3); border: 2px solid red; border-radius: 50%; color: white; font-weight: bold; display: none; z-index: 50; justify-content: center; align-items: center; user-select: none; }
+        #action-btn:active { background: rgba(255, 0, 0, 0.8); }
+
+        #timer-ui { position: absolute; top: 80px; width: 100%; text-align: center; color: red; font-size: 40px; font-weight: bold; display: none; z-index: 40; text-shadow: 0 0 10px red; }
+        #glitch-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 200; display: none; pointer-events: none; }
+
+        /* TOOLBAR STYLES */
+        #toolbar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 60; display: none; }
+        .tool-slot { width: 60px; height: 60px; border: 2px solid #555; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; font-size: 24px; cursor: pointer; position: relative; color: #666; transition: 0.2s; }
+        .tool-slot.active { border-color: #0f0; color: #fff; box-shadow: 0 0 10px #0f0; }
+        .tool-slot.locked { opacity: 0.3; pointer-events: none; border-color: #300; }
+        .tool-count { position: absolute; top: 2px; right: 2px; font-size: 12px; color: yellow; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="glitch-overlay"></div>
+    <div id="crosshair"></div>
+    <div id="timer-ui">30</div>
+    <div id="ammo-ui">3/3</div>
+    
+    <div id="action-btn">USE</div>
+
+    <div id="toolbar">
+        <div class="tool-slot active" id="tool-1" onclick="switchTool(1)">🔦</div>
+        <div class="tool-slot" id="tool-2" onclick="switchTool(2)">📡<span class="tool-count" id="radar-cnt">3</span></div>
+        <div class="tool-slot locked" id="tool-3" onclick="switchTool(3)">🔫</div>
+    </div>
+
+    <div id="minimap"><canvas id="m-canvas" width="120" height="150"></canvas></div>
+    <div id="quest-ui">KEYS: <span id="key-count" style="color: yellow;">0</span>/5</div>
+    <div id="msg-center">GUN ACQUIRED!<br>KILL THE MONSTER</div>
+    
+    <div id="menu">
+        <h1 style="font-size: 80px;">DARKNESS</h1>
+        <div style="color: white; font-size: 14px; margin-bottom: 10px;">tìm 5 chìa khoá để tiêu diệt quái vật</div>
+        <button onclick="showDeviceMenu()">BẮT ĐẦU</button>
+        <h1 style="font-size: 20px;">cre: maisg</h1>
+    </div>
+
+    <div id="device-menu" style="display:none;"><h2 style="color:#f00;">THIẾT BỊ</h2><button onclick="initGame('pc')">PC</button><button onclick="initGame('pe')">MOBILE</button></div>
+    <div id="joystick-container"><div id="joystick-knob"></div></div>
+    <div id="overlay" style="display:none;"><h1 id="msg">DIED</h1><button onclick="location.reload()">LẠI</button></div>
+    <div id="ui"><div class="bar-container"><div id="hp-bar"></div></div><div class="bar-container"><div id="bat-bar"></div></div></div>
+    <canvas id="c"></canvas>
+
+<script>
+const MONSTER_IMAGE_URL = 'https://i.postimg.cc/Th8G6kVR/mr-breat-removebg-preview.png';
+const canvas = document.getElementById('c'), mCanvas = document.getElementById('m-canvas'), mCtx = mCanvas.getContext('2d'), gl = canvas.getContext('webgl2');
+
+const MAP = { W: 580, H: 780 };
+const PLAYER = { pos: [0, 2, 0], yaw: 0, pitch: 0, hp: 100, bat: 70, keys: 0 }; // PIN BẮT ĐẦU 70
+const MONSTER = { pos: [100, 0, 100], speed: 0.25 };
+const GATE_POS = [0, 0, -785];
+const KEYS = [], STATE = { keys: {}, trees: [], started: false, over: false, texLoaded: false, isPE: false, hasGun: false, ammo: 3, hits: 0, monsterDead: false, escapeTime: 30, showM: false };
+// LOGIC CÔNG CỤ
+STATE.activeTool = 1; // 1: Đèn, 2: Radar, 3: Súng
+STATE.radarCharges = 3;
+STATE.radarEndTime = 0; // Thời gian kết thúc hiện thị radar thủ công
+
+let joyPos = { dx: 0, dy: 0 };
+
+const vs = `#version 300 es
+layout(location=0) in vec3 p; layout(location=2) in vec3 c;
+uniform mat4 uP, uV, uM; out vec3 vP, vC;
+void main() { vP = (uM * vec4(p, 1)).xyz; vC = c; gl_Position = uP * uV * uM * vec4(p, 1); }`;
+const fs = `#version 300 es
+precision highp float; in vec3 vP, vC;
+uniform vec3 uCP, uCD; uniform float uB; uniform sampler2D uTex; uniform bool uIsMonster; out vec4 o;
+void main() {
+    float d = length(uCP - vP), fog = 1.0 - exp(-d * 0.06);
+    if(uIsMonster) {
+        vec4 t = texture(uTex, vC.xy); if(t.a < 0.2) discard;
+        o = vec4(mix(t.rgb, vec3(0), clamp(fog, 0.0, 1.0)), t.a);
+    } else {
+        float spot = dot(normalize(uCP - vP), -uCD);
+        // Nếu uB <= 0 (tắt đèn) thì chỉ có ánh sáng môi trường cực yếu
+        float flicker = (uB < 15.0 && uB > 0.0) ? (sin(uB * 20.0) > 0.0 ? 1.0 : 0.2) : 1.0;
+        float intensity = (uB > 0.0) ? smoothstep(0.80, 0.98, spot) * (uB/100.0) * 2.5 * flicker : 0.0;
+        // Ánh sáng môi trường (ambient) rất tối khi tắt đèn
+        vec3 ambient = vec3(0.02); 
+        o = vec4(mix(vC * (intensity * (25.0/(1.0 + 0.04*d + 0.004*d*d)) + ambient), vec3(0), clamp(fog, 0.0, 1.0)), 1.0);
+    }
+}`;
+
+const prg = gl.createProgram();
+const shd = (s, t) => { let h = gl.createShader(t); gl.shaderSource(h, s); gl.compileShader(h); return h; };
+gl.attachShader(prg, shd(vs, gl.VERTEX_SHADER)); gl.attachShader(prg, shd(fs, gl.FRAGMENT_SHADER)); gl.linkProgram(prg);
+
+const l = { 
+    p: gl.getUniformLocation(prg, "uP"), v: gl.getUniformLocation(prg, "uV"), 
+    m: gl.getUniformLocation(prg, "uM"), cp: gl.getUniformLocation(prg, "uCP"), 
+    cd: gl.getUniformLocation(prg, "uCD"), b: gl.getUniformLocation(prg, "uB"), 
+    uTex: gl.getUniformLocation(prg, "uTex"), uIsMonster: gl.getUniformLocation(prg, "uIsMonster") 
+};
+
+const V3 = {
+    add: (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]], sub: (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]],
+    mul: (a, s) => [a[0]*s, a[1]*s, a[2]*s], distSq: (a, b) => (a[0]-b[0])**2 + (a[2]-b[2])**2,
+    norm: v => { let len = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); return len? [v[0]/len, v[1]/len, v[2]/len] : [0,0,0]; },
+    dot: (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2]
+};
+
+const M4 = {
+    identity: () => new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]),
+    perspective: (f, a, n, far) => { let s = 1/Math.tan(f/2), nf = 1/(n-far); return new Float32Array([s/a,0,0,0, 0,s,0,0, 0,0,(far+n)*nf,-1, 0,0,(2*far*n)*nf,0]); },
+    lookAt: (e, c, u) => {
+        let z = V3.norm(V3.sub(e, c)), x = V3.norm([u[1]*z[2]-u[2]*z[1], u[2]*z[0]-u[0]*z[2], u[0]*z[1]-u[1]*z[0]]), y = [z[1]*x[2]-z[2]*x[1], z[2]*x[0]-z[0]*x[2], z[0]*x[1]-z[1]*x[0]];
+        return new Float32Array([x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0, -V3.dot(x,e),-V3.dot(y,e),-V3.dot(z,e),1]);
+    }
+};
+
+function combine(m) {
+    let p = [], c = []; m.forEach(x => { p.push(...x.p); c.push(...x.c); });
+    let vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const b = (d, idx) => { let bb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d), gl.STATIC_DRAW); gl.vertexAttribPointer(idx, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(idx); };
+    b(p,0); b(c,2); return {vao, cnt: p.length/3};
+}
+
+function showDeviceMenu() { document.getElementById('menu').style.display='none'; document.getElementById('device-menu').style.display='flex'; }
+
+function initGame(t) { 
+    STATE.isPE = (t==='pe'); 
+    document.getElementById('device-menu').style.display='none';
+    const g = document.getElementById('glitch-overlay');
+    let count = 0;
+    const interval = setInterval(() => {
+        g.style.display = (count % 2 === 0) ? 'block' : 'none';
+        count++;
+        if(count > 6) {
+            clearInterval(interval);
+            g.style.display = 'none';
+            if(!STATE.isPE) canvas.requestPointerLock();
+            if(STATE.isPE){document.getElementById('joystick-container').style.display='block'; setupMobile();}
+            start();
+        }
+    }, 60);
+}
+
+function setupMobile() {
+    const k = document.getElementById('joystick-knob'), c = document.getElementById('joystick-container');
+    let camId = null, lx = 0, ly = 0;
+    
+    c.addEventListener('touchmove', e => {
+        e.preventDefault();
+        const t = e.targetTouches[0]; 
+        if(!t) return;
+        const r = c.getBoundingClientRect();
+        let dx = t.clientX - (r.left + r.width/2), dy = t.clientY - (r.top + r.height/2);
+        const d = Math.min(r.width/2, Math.sqrt(dx*dx+dy*dy));
+        const a = Math.atan2(dy, dx);
+        k.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
+        joyPos = { dx: Math.cos(a)*d/(r.width/2), dy: Math.sin(a)*d/(r.width/2) };
+    }, {passive: false});
+    
+    c.addEventListener('touchend', e => { 
+        if(e.targetTouches.length === 0) { k.style.transform='translate(0,0)'; joyPos={dx:0,dy:0}; } 
+    });
+    
+    window.addEventListener('touchstart', e => {
+        for(let i=0; i<e.changedTouches.length; i++) {
+            let t = e.changedTouches[i];
+            if(t.target.closest('.tool-slot') || t.target.id === 'action-btn') return;
+            if(t.clientX > window.innerWidth/2 && camId === null) {
+                camId = t.identifier; lx = t.clientX; ly = t.clientY;
+            }
+        }
+    });
+    
+    window.addEventListener('touchmove', e => {
+        for(let i=0; i<e.changedTouches.length; i++) {
+            let t = e.changedTouches[i];
+            if(t.identifier === camId) {
+                PLAYER.yaw += (t.clientX - lx) * 0.005;
+                PLAYER.pitch = Math.max(-1.4, Math.min(1.4, PLAYER.pitch - (t.clientY - ly) * 0.005));
+                lx = t.clientX; ly = t.clientY;
+            }
+        }
+    });
+    
+    window.addEventListener('touchend', e => {
+        for(let i=0; i<e.changedTouches.length; i++) {
+            if(e.changedTouches[i].identifier === camId) camId = null;
+        }
+    });
+
+    document.getElementById('action-btn').addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        handleAction();
+    });
+}
+
+function start() {
+    document.getElementById('ui').style.display='block';
+    document.getElementById('toolbar').style.display='flex';
+    STATE.monsterTex = gl.createTexture(); const img = new Image(); img.crossOrigin = "anonymous";
+    img.onload = () => { gl.bindTexture(gl.TEXTURE_2D, STATE.monsterTex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img); gl.generateMipmap(gl.TEXTURE_2D); STATE.texLoaded=true; };
+    img.src = MONSTER_IMAGE_URL; 
+    
+    STATE.monster = combine([{ p: [-3.5,0,0, 3.5,0,0, 3.5,10,0, -3.5,0,0, 3.5,10,0, -3.5,10,0], c: [0,1,0, 1,1,0, 1,0,0, 0,1,0, 1,0,0, 0,0,0] }]);
+    
+    // GỘP CÂY: Thân cao 20 (cũ là 12) + Tán lá (Hình hộp xanh ở trên)
+    STATE.treeMesh = combine([
+        // Thân (Cao 20)
+        {p: [-0.4,0,-0.4, 0.4,0,-0.4, 0.4,20,-0.4, -0.4,0,-0.4, 0.4,20,-0.4, -0.4,20,-0.4, -0.4,0,0.4, 0.4,0,0.4, 0.4,20,0.4, -0.4,0,0.4, 0.4,20,0.4, -0.4,20,0.4, -0.4,20,0.4, -0.4,20,-0.4, 0.4,20,-0.4, -0.4,20,0.4, 0.4,20,-0.4, 0.4,20,0.4, -0.4,0,0.4, -0.4,0,-0.4, 0.4,0,-0.4, -0.4,0,0.4, 0.4,0,-0.4, 0.4,0,0.4, 0.4,0,0.4, 0.4,0,-0.4, 0.4,20,-0.4, 0.4,0,0.4, 0.4,20,-0.4, 0.4,20,0.4, -0.4,0,0.4, -0.4,0,-0.4, -0.4,20,-0.4, -0.4,0,0.4, -0.4,20,-0.4, -0.4,20,0.4], c: new Array(108).fill(0.04)},
+        // Tán lá (Hình hộp 4x4x6, nằm ở độ cao 14-20)
+        {p: [-2,14,-2, 2,14,-2, 2,20,-2, -2,14,-2, 2,20,-2, -2,20,-2,  -2,14,2, 2,14,2, 2,20,2, -2,14,2, 2,20,2, -2,20,2,  -2,20,2, -2,20,-2, 2,20,-2, -2,20,2, 2,20,-2, 2,20,2,  -2,14,2, -2,14,-2, 2,14,-2, -2,14,2, 2,14,-2, 2,14,2,  2,14,2, 2,14,-2, 2,20,-2, 2,14,2, 2,20,-2, 2,20,2,  -2,14,2, -2,14,-2, -2,20,-2, -2,14,2, -2,20,-2, -2,20,2], c: new Array(108).fill(0).map(()=>[0,0.2,0]).flat()}
+    ]);
+
+    STATE.ground = combine([{p: [-1000,0,-1000, 1000,0,-1000, 1000,0,1000, -1000,0,-1000, 1000,0,1000, -1000,0,1000], c: new Array(18).fill(0.01)}]);
+    STATE.keyMesh = combine([{p: [-0.3,0,-0.3, 0.3,0,-0.3, 0.3,0.6,-0.3, -0.3,0,-0.3, 0.3,0.6,-0.3, -0.3,0.6,-0.3], c: new Array(18).fill(1)}]);
+    STATE.fence = combine([{p: [-600,0,-800, 600,0,-800, 600,10,-800, -600,0,-800, 600,10,-800, -600,10,-800, -600,0,800, 600,0,800, 600,10,800, -600,0,800, 600,10,800, -600,10,800, -600,0,-800, -600,0,800, -600,10,800, -600,0,-800, -600,10,800, -600,10,-800, 600,0,-800, 600,0,800, 600,10,800, 600,0,-800, 600,10,800, 600,10,-800], c: new Array(72).fill(0.15).map((v,i)=>i%3==0?0.3:0.02)}]);
+    STATE.gateMesh = combine([{p: [-5,0,0, 5,0,0, 5,10,0, -5,0,0, 5,10,0, -5,10,0], c: new Array(18).fill(0).map((v,i)=>i%3==0?0:1)}]);
+
+    // TĂNG CÂY LÊN 1550
+    for(let i=0; i<1550; i++) {
+        STATE.trees.push({x:(Math.random()-0.5)*1160, z:(Math.random()-0.5)*1560});
+    }
+
+    while(KEYS.length < 5) {
+        let kx = (Math.random()-0.5) * 1000;
+        let kz = (Math.random()-0.5) * 1400;
+        let overlap = false;
+        for(let k of KEYS) {
+            if(V3.distSq([kx,0,kz], [k.x,0,k.z]) < 100) { overlap = true; break; }
+        }
+        if(!overlap) { KEYS.push({x:kx, z:kz, picked:false}); }
+    }
+    
+    setInterval(() => {
+        if(!STATE.over && !STATE.monsterDead) {
+            STATE.showM = true;
+            setTimeout(() => { STATE.showM = false; }, 1000);
+        }
+    }, 15000);
+
+    // Cập nhật giao diện Action Button
+    updateActionBtn();
+
+    STATE.started = true; loop();
+}
+
+function switchTool(id) {
+    if(id === 3 && !STATE.hasGun) return; // Chưa có súng ko đổi đc
+    STATE.activeTool = id;
+    
+    // Cập nhật UI
+    document.querySelectorAll('.tool-slot').forEach((el, idx) => {
+        if((idx + 1) === id) el.classList.add('active');
+        else el.classList.remove('active');
+    });
+
+    // Xử lý logic từng công cụ
+    const crosshair = document.getElementById('crosshair');
+    if(id === 1) { // Đèn
+        crosshair.style.display = 'none';
+        document.getElementById('ammo-ui').style.display='none';
+    } else if(id === 2) { // Radar
+        crosshair.style.display = 'none';
+        document.getElementById('ammo-ui').style.display='none';
+    } else if(id === 3) { // Súng
+        crosshair.style.display = 'block';
+        document.getElementById('ammo-ui').style.display='block';
+    }
+    updateActionBtn();
+}
+
+function updateActionBtn() {
+    if(!STATE.isPE) return;
+    const btn = document.getElementById('action-btn');
+    if(STATE.activeTool === 1) {
+        btn.style.display = 'none'; // Đèn tự động sáng
+    } else if (STATE.activeTool === 2) {
+        btn.style.display = 'flex'; btn.innerText = "SCAN"; btn.style.borderColor = "#0ff";
+    } else if (STATE.activeTool === 3) {
+        btn.style.display = 'flex'; btn.innerText = "BẮN"; btn.style.borderColor = "#f00";
+    }
+}
+
+function handleAction() {
+    if(STATE.activeTool === 3) tryShoot();
+    else if(STATE.activeTool === 2) useRadar();
+}
+
+function useRadar() {
+    if(STATE.radarCharges > 0) {
+        STATE.radarCharges--;
+        document.getElementById('radar-cnt').innerText = STATE.radarCharges;
+        STATE.radarEndTime = Date.now() + 3000; // Hiện trong 3 giây
+        // Hiệu ứng âm thanh/hình ảnh giả lập
+        const flash = document.getElementById('glitch-overlay');
+        flash.style.display = 'block'; flash.style.opacity = '0.2'; flash.style.background = '#0ff';
+        setTimeout(() => { flash.style.display = 'none'; flash.style.background = '#fff'; flash.style.opacity = '1';}, 100);
+    }
+}
+
+function tryShoot() {
+    if(STATE.activeTool !== 3 || STATE.ammo <= 0 || STATE.monsterDead) return;
+    STATE.ammo--;
+    document.getElementById('ammo-ui').innerText = STATE.ammo + "/3";
+    
+    const flash = document.getElementById('glitch-overlay');
+    flash.style.display = 'block';
+    flash.style.opacity = '0.4';
+    setTimeout(() => { flash.style.display = 'none'; flash.style.opacity = '1'; }, 80);
+
+    const c = document.getElementById('c');
+    const rx = (Math.random() * 10 - 5) + "px";
+    const ry = (Math.random() * 10 - 5) + "px";
+    c.style.transform = `translate(${rx}, ${ry})`;
+    setTimeout(() => { c.style.transform = "none"; }, 100);
+
+    let toMonster = V3.sub(MONSTER.pos, PLAYER.pos);
+    let dist = Math.sqrt(toMonster[0]**2 + toMonster[2]**2);
+    let cosP = Math.cos(PLAYER.pitch), sinP = Math.sin(PLAYER.pitch);
+    let cosY = Math.cos(PLAYER.yaw), sinY = Math.sin(PLAYER.yaw);
+    let camDir = [sinY*cosP, sinP, -cosY*cosP];
+    let dirToM = V3.norm(toMonster);
+    let dot = V3.dot(dirToM, camDir);
+    
+    if(dot > 0.96 && dist < 100) {
+        STATE.hits++;
+        document.getElementById('crosshair').style.backgroundColor = 'red';
+        setTimeout(()=>document.getElementById('crosshair').style.backgroundColor = 'transparent', 100);
+    }
+    checkGunState();
+}
+
+function checkGunState() {
+    const msg = document.getElementById('msg-center');
+    if (STATE.hits >= 3) {
+        STATE.monsterDead = true;
+        msg.innerHTML = "MONSTER DESTROYED!<br>GO TO GATE!";
+        msg.style.display = 'block';
+        msg.style.color = '#0f0';
+        MONSTER.pos = [0, -500, 0];
+    } else if (STATE.ammo === 0) {
+        msg.innerHTML = "OUT OF AMMO!<br>RUN TO GATE!";
+        msg.style.display = 'block';
+        msg.style.color = '#f00';
+        document.getElementById('timer-ui').style.display = 'block';
+        let timer = setInterval(() => {
+            if(STATE.over) { clearInterval(timer); return; }
+            STATE.escapeTime--;
+            document.getElementById('timer-ui').innerText = STATE.escapeTime;
+            if(STATE.escapeTime <= 0) {
+                clearInterval(timer);
+                endGame("TIME OVER!");
+            }
+        }, 1000);
+    }
+}
+
+window.onkeydown = e => {
+    STATE.keys[e.code]=true;
+    if(e.key === '1') switchTool(1);
+    if(e.key === '2') switchTool(2);
+    if(e.key === '3') switchTool(3);
+};
+window.onkeyup = e => STATE.keys[e.code]=false;
+window.onmousedown = (e) => { 
+    if(!STATE.isPE && document.pointerLockElement) {
+        // Trên PC, chuột trái là nút hành động
+        handleAction();
+    }
+};
+window.onmousemove = e => { if(document.pointerLockElement) { PLAYER.yaw+=e.movementX*0.002; PLAYER.pitch=Math.max(-1.4, Math.min(1.4, PLAYER.pitch-e.movementY*0.002)); } };
+
+function loop() {
+    if(STATE.over) return;
+    let cosP = Math.cos(PLAYER.pitch), sinP = Math.sin(PLAYER.pitch), cosY = Math.cos(PLAYER.yaw), sinY = Math.sin(PLAYER.yaw);
+    let cd = [sinY*cosP, sinP, -cosY*cosP], fwd = [sinY, 0, -cosY], side = [cosY, 0, sinY], move = [0,0,0];
+    
+    if(!STATE.isPE) {
+        if(STATE.keys.KeyW) move=V3.add(move, fwd); if(STATE.keys.KeyS) move=V3.sub(move, fwd);
+        if(STATE.keys.KeyA) move=V3.sub(move, side); if(STATE.keys.KeyD) move=V3.add(move, side);
+    } else { move=V3.add(V3.mul(fwd,-joyPos.dy), V3.mul(side,joyPos.dx)); }
+
+    if(move[0]||move[2]) {
+        let np = V3.add(PLAYER.pos, V3.mul(V3.norm(move), 0.35));
+        if(Math.abs(np[0]) < MAP.W && Math.abs(np[2]) < MAP.H) {
+            let col = false; for(let t of STATE.trees) { if(V3.distSq(np, [t.x, 0, t.z]) < 2.5) { col=true; break; } }
+            if(!col) PLAYER.pos = np;
+        }
+    }
+    
+    if(!STATE.monsterDead) {
+        let md = V3.norm(V3.sub(PLAYER.pos, MONSTER.pos)); 
+        MONSTER.pos = V3.add(MONSTER.pos, V3.mul(md, MONSTER.speed));
+        if(V3.distSq(PLAYER.pos, MONSTER.pos) < 9) { PLAYER.hp-=0.5; if(PLAYER.hp<=0) endGame("YOU DIE!"); }
+    }
+    
+    KEYS.forEach(k => { if(!k.picked && V3.distSq(PLAYER.pos, [k.x,0,k.z]) < 9) { 
+        k.picked=true; PLAYER.keys++; document.getElementById('key-count').innerText=PLAYER.keys; 
+        if(PLAYER.keys>=5) {
+            STATE.hasGun = true;
+            document.getElementById('tool-3').classList.remove('locked');
+            document.getElementById('msg-center').style.display='block';
+            setTimeout(() => document.getElementById('msg-center').style.display='none', 3000);
+        }
+    }});
+
+    if(PLAYER.keys >= 5 && (STATE.monsterDead || STATE.ammo === 0) && V3.distSq(PLAYER.pos, GATE_POS) < 30) { 
+        endGame("YOU ESCAPED!"); 
+    }
+
+    gl.viewport(0,0,canvas.width=window.innerWidth, canvas.height=window.innerHeight);
+    gl.clear(16640); gl.enable(gl.DEPTH_TEST); gl.useProgram(prg);
+    gl.uniformMatrix4fv(l.p, false, M4.perspective(1.1, canvas.width/canvas.height, 0.1, 1000));
+    gl.uniformMatrix4fv(l.v, false, M4.lookAt(PLAYER.pos, V3.add(PLAYER.pos, cd), [0,1,0]));
+    gl.uniform3fv(l.cp, PLAYER.pos); gl.uniform3fv(l.cd, cd); 
+    
+    // LOGIC ÁNH SÁNG: Nếu không cầm đèn (ActiveTool != 1) thì ánh sáng = 0
+    let currentBat = (STATE.activeTool === 1) ? PLAYER.bat : 0;
+    gl.uniform1f(l.b, currentBat);
+    
+    gl.uniform1i(l.uIsMonster, 0); draw(STATE.ground, [0,0,0]); draw(STATE.fence, [0,0,0]);
+    draw(STATE.gateMesh, GATE_POS);
+    STATE.trees.forEach(t => { if(V3.distSq(PLAYER.pos, [t.x,0,t.z]) < 14400) draw(STATE.treeMesh, [t.x, 0, t.z]); });
+    KEYS.forEach(k => { if(!k.picked) draw(STATE.keyMesh, [k.x, 1 + Math.sin(Date.now()*0.005)*0.3, k.z]); });
+    
+    if(STATE.texLoaded && !STATE.monsterDead) { 
+        gl.uniform1i(l.uIsMonster, 1); gl.bindTexture(gl.TEXTURE_2D, STATE.monsterTex); 
+        let dx = PLAYER.pos[0] - MONSTER.pos[0], dz = PLAYER.pos[2] - MONSTER.pos[2];
+        draw(STATE.monster, MONSTER.pos, Math.atan2(dx, dz)); 
+    }
+    
+    if(STATE.activeTool === 1) PLAYER.bat -= 0.006;
+    document.getElementById('hp-bar').style.width = PLAYER.hp + "%";
+    document.getElementById('bat-bar').style.width = Math.max(0, PLAYER.bat) + "%";
+    updateMiniMap(); requestAnimationFrame(loop);
+}
+
+function updateMiniMap() {
+    mCtx.fillStyle = "#000"; mCtx.fillRect(0,0,120,150);
+    const sx = 120/1200, sz = 150/1600; 
+    const px = (PLAYER.pos[0]+600)*sx, pz = (PLAYER.pos[2]+800)*sz;
+    
+    mCtx.fillStyle = "rgba(0,255,0,0.3)"; mCtx.beginPath(); mCtx.moveTo(px,pz);
+    mCtx.lineTo(px+Math.sin(PLAYER.yaw-0.4)*15, pz-Math.cos(PLAYER.yaw-0.4)*15);
+    mCtx.lineTo(px+Math.sin(PLAYER.yaw+0.4)*15, pz-Math.cos(PLAYER.yaw+0.4)*15); mCtx.fill();
+    
+    // LOGIC HIỆN CHÌA KHOÁ: Chỉ hiện khi Radar Active (trong 3 giây)
+    if(Date.now() < STATE.radarEndTime) {
+        mCtx.fillStyle="#ff0"; KEYS.forEach(k => { if(!k.picked) mCtx.fillRect((k.x+600)*sx-1, (k.z+800)*sz-1, 3, 3); });
+    }
+    
+    mCtx.fillStyle="#0f0"; mCtx.beginPath(); mCtx.arc(px, pz, 2, 0, 6.3); mCtx.fill();
+
+    // Radar thụ động (15s) HOẶC Radar chủ động (3s) đều hiện quái
+    if((STATE.showM || Date.now() < STATE.radarEndTime) && !STATE.monsterDead) {
+        const mx = (MONSTER.pos[0]+600)*sx, mz = (MONSTER.pos[2]+800)*sz;
+        mCtx.fillStyle = "red"; mCtx.beginPath(); mCtx.arc(mx, mz, 4, 0, 6.3); mCtx.fill();
+        mCtx.strokeStyle = "red"; mCtx.beginPath(); mCtx.arc(mx, mz, 8, 0, 6.3); mCtx.stroke();
+    }
+
+    if(PLAYER.keys >= 5) { mCtx.fillStyle="#0ff"; mCtx.fillRect((GATE_POS[0]+600)*sx-2, (GATE_POS[2]+800)*sz-2, 6, 6); }
+}
+
+function draw(mesh, pos, rotY = 0) {
+    let m = M4.identity(), s = Math.sin(rotY), c = Math.cos(rotY);
+    m[0]=c; m[2]=-s; m[8]=s; m[10]=c; m[12]=pos[0]; m[13]=pos[1]; m[14]=pos[2];
+    gl.uniformMatrix4fv(l.m, false, m); gl.bindVertexArray(mesh.vao); gl.drawArrays(gl.TRIANGLES, 0, mesh.cnt);
+}
+
+function endGame(m) { STATE.over=true; document.getElementById('overlay').style.display='flex'; document.getElementById('msg').innerText=m; if(document.pointerLockElement) document.exitPointerLock(); }
+</script>
+</body>
+</html>
